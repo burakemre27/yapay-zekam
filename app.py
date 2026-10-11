@@ -3,7 +3,7 @@ from groq import Groq
 from duckduckgo_search import DDGS
 
 st.set_page_config(page_title="Gobels", page_icon="🌐")
-st.title("Tegmen's Jarvis")
+st.title("🌐 Tegmen's Jarvis")
 
 API_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=API_KEY)
