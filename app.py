@@ -1,4 +1,5 @@
 import streamlit as st
+import requests
 from groq import Groq
 from duckduckgo_search import DDGS
 
@@ -8,38 +9,57 @@ st.title("🌐 Tegmen's Jarvis")
 API_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=API_KEY)
 
-# Hesabınızdaki aktif sohbet modellerini listele
+# 1. Aktif modelleri al
 @st.cache_data(ttl=3600)
 def get_available_chat_models():
     try:
         model_list = client.models.list()
-        # Ses (whisper) ve embedding modellerini filtrele
-        valid_models = [
+        valid = [
             m.id for m in model_list.data 
             if not any(x in m.id.lower() for x in ["whisper", "embed", "guard", "safetensors"])
         ]
-        return valid_models if valid_models else ["llama-3.3-70b-versatile"]
+        return valid if valid else ["llama-3.3-70b-versatile"]
     except Exception:
         return ["llama-3.3-70b-versatile"]
 
-available_models = get_available_chat_models()
-selected_model = st.sidebar.selectbox("Kullanılan Model", available_models, index=0)
+models = get_available_chat_models()
+selected_model = st.sidebar.selectbox("Kullanılan Model", models, index=0)
 
-# Web arama fonksiyonu
-def search_web(query, max_results=3):
+# 2. Şehirlerin anlık hava durumunu garantili çeken ücretsiz fonksiyon (Open-Meteo API)
+def get_live_weather(city_name):
+    try:
+        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city_name}&count=1&language=tr&format=json"
+        geo_res = requests.get(geo_url, timeout=5).json()
+        if not geo_res.get("results"):
+            return None
+        
+        loc = geo_res["results"][0]
+        lat, lon = loc["latitude"], loc["longitude"]
+        city_display = f"{loc['name']}, {loc.get('country', '')}"
+
+        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto"
+        w_res = requests.get(weather_url, timeout=5).json()
+        curr = w_res.get("current", {})
+
+        return (
+            f"CANLI HAVA DURUMU ({city_display}):\n"
+            f"- Sıcaklık: {curr.get('temperature_2m')} °C\n"
+            f"- Hissedilen: {curr.get('apparent_temperature')} °C\n"
+            f"- Nem: %{curr.get('relative_humidity_2m')}\n"
+            f"- Rüzgar Hızı: {curr.get('wind_speed_10m')} km/s"
+        )
+    except Exception:
+        return None
+
+# 3. Genel DuckDuckGo web araması
+def search_web(query):
     try:
         with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=max_results))
+            results = list(ddgs.text(query, max_results=3))
             if not results:
                 return ""
-            snippets = []
-            for r in results:
-                title = str(r.get("title", "")).strip()
-                body = str(r.get("body", "")).strip()
-                if body:
-                    snippets.append(f"{title}: {body}")
-            full_text = "\n".join(snippets)
-            return full_text[:2000]
+            snippets = [f"{r.get('title')}: {r.get('body')}" for r in results if r.get('body')]
+            return "\n".join(snippets)[:2000]
     except Exception:
         return ""
 
@@ -56,19 +76,30 @@ if prompt := st.chat_input("Bir şeyler sorun (örneğin: Ankara hava durumu)...
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Bilgiler taranıyor ve yanıt hazırlanıyor..."):
-            web_info = search_web(prompt)
+        with st.spinner("Canlı veriler kontrol ediliyor..."):
+            extra_context = ""
+            
+            # Hava durumu sorusu mu tespit et
+            prompt_lower = prompt.lower()
+            if any(w in prompt_lower for w in ["hava", "derece", "sıcaklık", "yağmur"]):
+                # Cümleden şehri tahmin etmeye çalış
+                for city in ["ankara", "istanbul", "izmir", "bursa", "antalya", "konya", "adana"]:
+                    if city in prompt_lower:
+                        weather_data = get_live_weather(city)
+                        if weather_data:
+                            extra_context = weather_data
+                        break
+            
+            # Eğer hava durumu değilse veya bulunamadıysa DuckDuckGo ara
+            if not extra_context:
+                extra_context = search_web(prompt)
 
             system_instruction = (
-                "Sen Türkçe konuşan, yardımsever ve zeki bir asistansın. "
-                "Cevaplarını her zaman akıcı ve düzgün bir Türkçe ile ver."
+                "Sen internetten anlık veri alma yeteneği olan Türkçe bir asistansın. "
+                "Sana verilen 'CANLI VERİ' bilgilerini kesin gerçek kabul ederek kullanıcıya doğrudan, net ve güncel yanıt ver."
             )
-            
-            if web_info:
-                system_instruction += (
-                    f"\n\nİnternetten alınan güncel bilgiler:\n{web_info}\n\n"
-                    "Bu bilgileri kullanarak kullanıcının sorusunu net bir şekilde yanıtla."
-                )
+            if extra_context:
+                system_instruction += f"\n\nCANLI VERİ:\n{extra_context}\n\nBu veriyi temel alarak cevap ver."
 
             payload = [{"role": "system", "content": system_instruction}]
             for m in st.session_state.messages[-6:]:
@@ -78,10 +109,10 @@ if prompt := st.chat_input("Bir şeyler sorun (örneğin: Ankara hava durumu)...
                 completion = client.chat.completions.create(
                     model=selected_model,
                     messages=payload,
-                    temperature=0.6,
+                    temperature=0.4,
                 )
                 response_text = completion.choices[0].message.content
                 st.markdown(response_text)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
             except Exception as e:
-                st.error(f"Bağlantı hatası: {str(e)}")
+                st.error(f"Hata: {str(e)}")
