@@ -6,7 +6,7 @@ from duckduckgo_search import DDGS
 
 # Sayfa yapılandırması
 st.set_page_config(
-    page_title="NEXUS AI // Canlı Asistan",
+    page_title="Tegmen'S JARVİS // Kişisel Asistan",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
