@@ -2,13 +2,30 @@ import streamlit as st
 from groq import Groq
 from duckduckgo_search import DDGS
 
-st.set_page_config(page_title="TEGMEN", page_icon="🌐")
+st.set_page_config(page_title="Tegmen YILMAZ", page_icon="🌐")
 st.title("🌐 Tegmen's Jarvis")
 
 API_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=API_KEY)
 
-# Web arama fonksiyonu (Güvenli ve temizlenmiş metin)
+# Hesabınızdaki aktif sohbet modellerini listele
+@st.cache_data(ttl=3600)
+def get_available_chat_models():
+    try:
+        model_list = client.models.list()
+        # Ses (whisper) ve embedding modellerini filtrele
+        valid_models = [
+            m.id for m in model_list.data 
+            if not any(x in m.id.lower() for x in ["whisper", "embed", "guard", "safetensors"])
+        ]
+        return valid_models if valid_models else ["llama-3.3-70b-versatile"]
+    except Exception:
+        return ["llama-3.3-70b-versatile"]
+
+available_models = get_available_chat_models()
+selected_model = st.sidebar.selectbox("Kullanılan Model", available_models, index=0)
+
+# Web arama fonksiyonu
 def search_web(query, max_results=3):
     try:
         with DDGS() as ddgs:
@@ -21,7 +38,6 @@ def search_web(query, max_results=3):
                 body = str(r.get("body", "")).strip()
                 if body:
                     snippets.append(f"{title}: {body}")
-            # Aşırı uzun metinleri sınırla
             full_text = "\n".join(snippets)
             return full_text[:2000]
     except Exception:
@@ -30,12 +46,10 @@ def search_web(query, max_results=3):
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Önceki sohbeti göster
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Yeni mesaj geldiğinde
 if prompt := st.chat_input("Bir şeyler sorun (örneğin: Ankara hava durumu)..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -56,16 +70,13 @@ if prompt := st.chat_input("Bir şeyler sorun (örneğin: Ankara hava durumu)...
                     "Bu bilgileri kullanarak kullanıcının sorusunu net bir şekilde yanıtla."
                 )
 
-            # API'ye gidecek mesaj listesi
             payload = [{"role": "system", "content": system_instruction}]
-            
-            # Son 6 mesajı al (geçmişin çok uzayıp hata vermesini önler)
             for m in st.session_state.messages[-6:]:
                 payload.append({"role": m["role"], "content": m["content"]})
 
             try:
                 completion = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
+                    model=selected_model,
                     messages=payload,
                     temperature=0.6,
                 )
@@ -73,5 +84,4 @@ if prompt := st.chat_input("Bir şeyler sorun (örneğin: Ankara hava durumu)...
                 st.markdown(response_text)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
             except Exception as e:
-                hata_mesaji = f"Bağlantı hatası oluştu: {str(e)}"
-                st.error(hata_mesaji)
+                st.error(f"Bağlantı hatası: {str(e)}")
