@@ -22,7 +22,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.title("🌐 Canlı Veri Destekli Kişisel Asistanım")
+st.title("🌐 Tegmen's JARVİS")
 
 API_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=API_KEY)
