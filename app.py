@@ -1,10 +1,10 @@
 import streamlit as st
 from groq import Groq
 
-st.set_page_config(page_title="GOBELS", page_icon="🤖")
-st.title("🤖 Tegmen YILMAZ Ai")
+st.set_page_config(page_title="Özel Yapay Zekam", page_icon="🤖")
+st.title("🤖 Kendi Yapay Zeka Asistanım")
 
-# Anahtarı secrets'tan güvenli oku
+# Anahtarı Streamlit Secrets üzerinden al
 API_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=API_KEY)
 
@@ -30,10 +30,10 @@ if prompt := st.chat_input("Bir şeyler yazın..."):
     for m in st.session_state.messages:
         messages.append({"role": m["role"], "content": m["content"]})
 
-    # Yanıtı üret ve göster
+    # Güncel ve stabil modelle yanıt üret
     with st.chat_message("assistant"):
         completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",
             messages=messages,
         )
         response_text = completion.choices[0].message.content
