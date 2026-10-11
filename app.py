@@ -200,7 +200,7 @@ st.markdown(
     f"""
     <div class="tech-header">
         <div>
-            <div class="tech-title">⚡ NEXUS CORE // v3.2</div>
+            <div class="tech-title">⚡ Tegmen's Jarvis CORE // v1.0</div>
             <div style="font-size: 12px; color: #7f97b5; margin-top: 4px;">MOTOR: {selected_model.upper()} | DÜŞÜK GECİKME</div>
         </div>
         <div class="status-badge">
