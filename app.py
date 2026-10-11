@@ -5,7 +5,7 @@ from google.genai import types
 st.set_page_config(page_title="Gobels", page_icon="🤖")
 st.title("🤖 Tegmen YILMAZ Ai")
 
-# Anahtarı Streamlit Secrets'tan güvenli oku
+# Anahtarı Streamlit Secrets'tan al
 API_KEY = st.secrets["GEMINI_API_KEY"]
 
 if "messages" not in st.session_state:
@@ -32,12 +32,12 @@ if prompt := st.chat_input("Bir şeyler yazın..."):
         for m in st.session_state.messages
     ]
 
-    # 3. Yanıtı al ve göster
+    # 3. Güncel model ile yanıt al
     with st.chat_message("assistant"):
         client = genai.Client(api_key=API_KEY)
         
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.8-flash",
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction="Sen yardımsever, doğrudan cevap veren analitik bir kişisel asistansın."
