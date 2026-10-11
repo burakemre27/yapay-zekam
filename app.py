@@ -5,7 +5,7 @@ from duckduckgo_search import DDGS
 
 # Kenar çubuğunu varsayılan olarak kapalı başlat
 st.set_page_config(
-    page_title="Canlı Asistanım", 
+    page_title="TEGMEN", 
     page_icon="🌐",
     initial_sidebar_state="collapsed"
 )
