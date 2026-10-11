@@ -3,8 +3,8 @@ import httpx
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="Özel Yapay Zekam", page_icon="🤖")
-st.title("🤖 Kendi Yapay Zeka Asistanım")
+st.set_page_config(page_title="Tegmen", page_icon="🤖")
+st.title("🤖 Tegmen YILMAZZ Ai")
 
 # Anahtarı secrets üzerinden al
 API_KEY = st.secrets["GEMINI_API_KEY"]
