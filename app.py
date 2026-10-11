@@ -1,8 +1,7 @@
 import streamlit as st
 import requests
-import time
+import re
 from groq import Groq
-from duckduckgo_search import DDGS
 
 # Sayfa yapılandırması
 st.set_page_config(
@@ -127,9 +126,10 @@ st.markdown(
             color: #00f3ff;
             background: rgba(0, 243, 255, 0.08);
             border: 1px solid rgba(0, 243, 255, 0.2);
-            padding: 2px 8px;
+            padding: 3px 10px;
             border-radius: 6px;
             margin-bottom: 8px;
+            letter-spacing: 1px;
         }
     </style>
     """,
@@ -157,43 +157,88 @@ def get_best_model():
 
 selected_model = get_best_model()
 
-# 2. Canlı Hava Durumu (Open-Meteo)
-def get_live_weather(city_name):
+# 2. Küresel Dinamik Canlı Hava Durumu (Open-Meteo)
+def get_live_weather(query_text):
     try:
-        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city_name}&count=1&language=tr&format=json"
+        clean_name = re.sub(
+            r'\b(hava|durumu|kaç|derece|sıcaklık|yağmur|kar|rüzgar|nasıl|bugün|anlık|için|da|de|te|ta)\b', 
+            '', 
+            query_text, 
+            flags=re.IGNORECASE
+        ).strip()
+        
+        target = clean_name if clean_name else query_text
+        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={target}&count=1&format=json"
         geo_res = requests.get(geo_url, timeout=5).json()
+        
         if not geo_res.get("results"):
             return None
         
         loc = geo_res["results"][0]
         lat, lon = loc["latitude"], loc["longitude"]
-        city_display = f"{loc['name']}, {loc.get('country', '')}"
+        city_display = f"{loc['name']}, {loc.get('admin1', '')} ({loc.get('country', '')})"
 
-        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m&timezone=auto"
+        weather_url = (
+            f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
+            f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m&timezone=auto"
+        )
         w_res = requests.get(weather_url, timeout=5).json()
         curr = w_res.get("current", {})
 
         return (
-            f"CANLI TELEMETRİ ({city_display}):\n"
+            f"KÜRESEL TELEMETRİ ({city_display}):\n"
             f"- Sıcaklık: {curr.get('temperature_2m')} °C\n"
-            f"- Hissedilen: {curr.get('apparent_temperature')} °C\n"
+            f"- Hissedilen Sıcaklık: {curr.get('apparent_temperature')} °C\n"
             f"- Bağıl Nem: %{curr.get('relative_humidity_2m')}\n"
             f"- Rüzgar Hızı: {curr.get('wind_speed_10m')} km/s"
         )
     except Exception:
         return None
 
-# 3. DuckDuckGo Web Taraması
-def search_web(query):
+# 3. Genel İnternet Taraması (Wikipedia + DuckDuckGo Hibrit)
+def search_general_web(query):
+    results = []
+    
+    # Katman A: Wikipedia Özet API (Bilim, tarih, edebiyat, teknoloji için hızlı ve güvenilir)
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=3))
-            if not results:
-                return ""
-            snippets = [f"[{r.get('title')}]: {r.get('body')}" for r in results if r.get('body')]
-            return "\n".join(snippets)[:2000]
+        wiki_url = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(query)}"
+        headers = {"User-Agent": "TegmenAI/1.0 (Educational Bot)"}
+        w_res = requests.get(wiki_url, headers=headers, timeout=4)
+        if w_res.status_code == 200:
+            extract = w_res.json().get("extract")
+            if extract:
+                results.append(f"[WIKIPEDIA CANLI ÖZET]: {extract}")
     except Exception:
-        return ""
+        pass
+
+    # Katman B: DuckDuckGo Anlık Bilgi Endpoint'i
+    try:
+        ddg_url = f"https://api.duckduckgo.com/?q={requests.utils.quote(query)}&format=json&no_html=1&skip_disambig=1"
+        d_res = requests.get(ddg_url, timeout=4).json()
+        abstract = d_res.get("AbstractText", "")
+        if abstract:
+            results.append(f"[WEB BİLGİ MERKEZİ]: {abstract}")
+        for item in d_res.get("RelatedTopics", [])[:2]:
+            t = item.get("Text")
+            if t:
+                results.append(f"[EK BAĞLANTI]: {t}")
+    except Exception:
+        pass
+
+    # Katman C: DuckDuckGo Standart Arama (Metin sonuçları)
+    if not results:
+        try:
+            from duckduckgo_search import DDGS
+            with DDGS() as ddgs:
+                ddg_list = list(ddgs.text(query, max_results=3))
+                for r in ddg_list:
+                    body = r.get("body")
+                    if body:
+                        results.append(f"[{r.get('title')}]: {body}")
+        except Exception:
+            pass
+
+    return "\n\n".join(results)[:2500] if results else ""
 
 # Üst Teknoloji Paneli
 st.markdown(
@@ -201,7 +246,7 @@ st.markdown(
     <div class="tech-header">
         <div>
             <div class="tech-title">⚡ Tegmen's Jarvis CORE // v1.0</div>
-            <div style="font-size: 12px; color: #7f97b5; margin-top: 4px;">MOTOR: {selected_model.upper()} | DÜŞÜK GECİKME</div>
+            <div style="font-size: 12px; color: #7f97b5; margin-top: 4px;">MOTOR: {selected_model.upper()} | EVRENSEL AĞ AKTİF</div>
         </div>
         <div class="status-badge">
             <span class="status-dot"></span> ÇEVRİMİÇİ // GERÇEK ZAMANLI
@@ -222,32 +267,29 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # Yeni İstek
-if prompt := st.chat_input("Sorgu veya komut girin (örn: Ankara hava durumu)..."):
+if prompt := st.chat_input("Sorgu, komut veya araştırma konusu girin..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar="⚡"):
-        with st.spinner("CANLI VERİ AKIŞI SAĞLANIYOR..."):
+        with st.spinner("CANLI VERİ AKIŞI VE AĞ TARAMASI SAĞLANIYOR..."):
             extra_context = ""
             prompt_lower = prompt.lower()
             
-            # Hava Durumu Telemetrisi
-            if any(w in prompt_lower for w in ["hava", "derece", "sıcaklık", "yağmur"]):
-                cities = ["ankara", "istanbul", "izmir", "bursa", "antalya", "konya", "adana", "trabzon", "eskişehir", "gaziantep"]
-                for city in cities:
-                    if city in prompt_lower:
-                        extra_context = get_live_weather(city)
-                        break
+            # Hava Durumu Telemetrisi (Dünyadaki her şehir için)
+            if any(w in prompt_lower for w in ["hava", "derece", "sıcaklık", "yağmur", "weather"]):
+                extra_context = get_live_weather(prompt)
             
-            # Web Araması
+            # Hava durumu değilse veya sonuç dönmediyse Genel İnternet Taraması
             if not extra_context:
-                extra_context = search_web(prompt)
+                extra_context = search_general_web(prompt)
 
             system_instruction = (
                 "Sen fütüristik, zeki, doğrudan ve yüksek analitik kabiliyete sahip Türkçe bir yapay zeka çekirdeğisin. "
                 "Cevaplarını net, profesyonel, modern ve akıcı bir Türkçe ile sun. Gereksiz dolambaçlı laflar etme. "
-                "Sana iletilen 'CANLI TELEMETRİ / VERİ' bilgilerini kesin gerçek kabul ederek kullanıcıyı anında bilgilendir."
+                "Sana iletilen 'CANLI TELEMETRİ / VERİ' bilgilerini kesin gerçek kabul ederek kullanıcıyı anında bilgilendir. "
+                "Kullanıcıya asla 'internete erişimim yok' deme; sağlanan canlı verileri ve genel bilgini harmanlayarak yanıtla."
             )
             if extra_context:
                 system_instruction += f"\n\nCANLI VERİ KAYNAĞI:\n{extra_context}\n\nBu veriyi kullanarak yanıt üret."
@@ -265,7 +307,7 @@ if prompt := st.chat_input("Sorgu veya komut girin (örn: Ankara hava durumu)...
                     stream=True
                 )
                 
-                # Canlı veri geldiyse küçük neon etiket göster
+                # Canlı veri geldiyse neon rozet göster
                 if extra_context:
                     st.markdown("<span class=\"live-chip\">⚡ CANLI AĞ VERİSİ ENTEGRE EDİLDİ</span>", unsafe_allow_html=True)
                 
