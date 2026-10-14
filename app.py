@@ -15,7 +15,6 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-        /* Genel Arka Plan ve Yazı Tipi */
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Orbitron:wght@500;700;900&display=swap');
         
         .stApp {
@@ -29,7 +28,6 @@ st.markdown(
             display: none !important;
         }
 
-        /* Üst Panel (Header Banner) */
         .tech-header {
             border: 1px solid rgba(0, 243, 255, 0.2);
             background: rgba(10, 20, 40, 0.6);
@@ -83,7 +81,6 @@ st.markdown(
             100% { transform: scale(0.9); opacity: 0.6; }
         }
 
-        /* Mesaj Balonları */
         [data-testid="stChatMessage"] {
             border-radius: 14px;
             padding: 16px 20px;
@@ -92,21 +89,18 @@ st.markdown(
             backdrop-filter: blur(10px);
         }
 
-        /* Kullanıcı Mesajı */
         [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
             background: rgba(14, 30, 60, 0.45) !important;
             border: 1px solid rgba(0, 243, 255, 0.25);
             box-shadow: 0 0 15px rgba(0, 243, 255, 0.05);
         }
 
-        /* Asistan Mesajı */
         [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
             background: rgba(18, 22, 38, 0.65) !important;
             border: 1px solid rgba(168, 85, 247, 0.25);
             box-shadow: 0 0 15px rgba(168, 85, 247, 0.05);
         }
 
-        /* Giriş Çubuğu (Chat Input) */
         [data-testid="stChatInput"] {
             border-radius: 14px !important;
             border: 1px solid rgba(0, 243, 255, 0.3) !important;
@@ -119,7 +113,6 @@ st.markdown(
             box-shadow: 0 0 25px rgba(0, 243, 255, 0.3) !important;
         }
 
-        /* Canlı Veri Bilgi Kutusu */
         .live-chip {
             display: inline-block;
             font-size: 11px;
@@ -139,25 +132,28 @@ st.markdown(
 API_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=API_KEY)
 
-# 1. En Uygun Modeli Arka Planda Seç
+# 1. Onay istemeyen, doğrudan çalışan ana modeller
+SAFE_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama3-70b-8192",
+    "llama3-8b-8192"
+]
+
 @st.cache_data(ttl=3600)
-def get_best_model():
+def get_verified_model():
     try:
-        model_list = client.models.list()
-        valid = [
-            m.id for m in model_list.data 
-            if not any(x in m.id.lower() for x in ["whisper", "embed", "guard", "safetensors"])
-        ]
-        for pref in ["llama-3.1-8b-instant", "llama3-8b-8192", "llama-3.3-70b-versatile"]:
-            if pref in valid:
-                return pref
-        return valid[0] if valid else "llama-3.3-70b-versatile"
+        available = [m.id for m in client.models.list().data]
+        for model in SAFE_MODELS:
+            if model in available:
+                return model
+        return "llama-3.3-70b-versatile"
     except Exception:
         return "llama-3.3-70b-versatile"
 
-selected_model = get_best_model()
+selected_model = get_verified_model()
 
-# 2. Küresel Dinamik Canlı Hava Durumu (Open-Meteo)
+# 2. Küresel Canlı Hava Durumu (Open-Meteo)
 def get_live_weather(query_text):
     try:
         clean_name = re.sub(
@@ -199,7 +195,7 @@ def get_live_weather(query_text):
 def search_general_web(query):
     results = []
     
-    # Katman A: Wikipedia Özet API (Bilim, tarih, edebiyat, teknoloji için hızlı ve güvenilir)
+    # Katman A: Wikipedia Türkçe Özeti
     try:
         wiki_url = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(query)}"
         headers = {"User-Agent": "TegmenAI/1.0 (Educational Bot)"}
@@ -207,25 +203,25 @@ def search_general_web(query):
         if w_res.status_code == 200:
             extract = w_res.json().get("extract")
             if extract:
-                results.append(f"[WIKIPEDIA CANLI ÖZET]: {extract}")
+                results.append(f"[WIKIPEDIA ÖZETİ]: {extract}")
     except Exception:
         pass
 
-    # Katman B: DuckDuckGo Anlık Bilgi Endpoint'i
+    # Katman B: DuckDuckGo JSON Endpoint
     try:
         ddg_url = f"https://api.duckduckgo.com/?q={requests.utils.quote(query)}&format=json&no_html=1&skip_disambig=1"
         d_res = requests.get(ddg_url, timeout=4).json()
         abstract = d_res.get("AbstractText", "")
         if abstract:
-            results.append(f"[WEB BİLGİ MERKEZİ]: {abstract}")
+            results.append(f"[WEB BİLGİ KAYNAĞI]: {abstract}")
         for item in d_res.get("RelatedTopics", [])[:2]:
             t = item.get("Text")
             if t:
-                results.append(f"[EK BAĞLANTI]: {t}")
+                results.append(f"[EK BİLGİ]: {t}")
     except Exception:
         pass
 
-    # Katman C: DuckDuckGo Standart Arama (Metin sonuçları)
+    # Katman C: DuckDuckGo Standart Arama Metinleri
     if not results:
         try:
             from duckduckgo_search import DDGS
@@ -246,10 +242,10 @@ st.markdown(
     <div class="tech-header">
         <div>
             <div class="tech-title">⚡ Tegmen's Jarvis CORE // v1.0</div>
-            <div style="font-size: 12px; color: #7f97b5; margin-top: 4px;">MOTOR: {selected_model.upper()} | EVRENSEL AĞ AKTİF</div>
+            <div style="font-size: 12px; color: #7f97b5; margin-top: 4px;">MOTOR: {selected_model.upper()} | GELİŞTİRİCİ: TEGMEN</div>
         </div>
         <div class="status-badge">
-            <span class="status-dot"></span> ÇEVRİMİÇİ // GERÇEK ZAMANLI
+            <span class="status-dot"></span> ÇEVRİMİÇİ // SİSTEM AKTİF
         </div>
     </div>
     """,
@@ -277,20 +273,23 @@ if prompt := st.chat_input("Sorgu, komut veya araştırma konusu girin..."):
             extra_context = ""
             prompt_lower = prompt.lower()
             
-            # Hava Durumu Telemetrisi (Dünyadaki her şehir için)
+            # 1. Hava Durumu Kontrolü
             if any(w in prompt_lower for w in ["hava", "derece", "sıcaklık", "yağmur", "weather"]):
                 extra_context = get_live_weather(prompt)
             
-            # Hava durumu değilse veya sonuç dönmediyse Genel İnternet Taraması
+            # 2. Genel İnternet Taraması
             if not extra_context:
                 extra_context = search_general_web(prompt)
 
+            # Sistem Talimatı (Geliştirici Kimliği ve Türkçe Kilidi)
             system_instruction = (
-                "Sen fütüristik, zeki, doğrudan ve yüksek analitik kabiliyete sahip Türkçe bir yapay zeka çekirdeğisin. "
-                "Cevaplarını net, profesyonel, modern ve akıcı bir Türkçe ile sun. Gereksiz dolambaçlı laflar etme. "
+                "Sen Tegmen tarafından özel olarak geliştirilmiş, 'Tegmen\\'s Jarvis CORE' adında fütüristik, zeki, analitik ve yüksek yetenekli bir kişisel yapay zeka çekirdeğisin. "
+                "Biri sana 'Seni kim yaptı?', 'Geliştiricin kim?', 'Yaratıcın kim?' veya benzeri bir soru sorduğunda kesinlikle ve gururla 'Beni Tegmen geliştirdi.' şeklinde yanıt ver. Asla Meta, Groq veya OpenAI tarafından geliştirildiğini söyleme. "
+                "Cevaplarını kesinlikle Türkçe, akıcı, zengin, profesyonel ve modern bir dille sun. Asla Arapça veya başka bir dil kullanma. "
                 "Sana iletilen 'CANLI TELEMETRİ / VERİ' bilgilerini kesin gerçek kabul ederek kullanıcıyı anında bilgilendir. "
-                "Kullanıcıya asla 'internete erişimim yok' deme; sağlanan canlı verileri ve genel bilgini harmanlayarak yanıtla."
+                "Kullanıcıya asla 'internete erişimim yok' gibi basmakalıp sözler söyleme; iletilen canlı verileri ve genel bilgini harmanlayarak doğrudan yanıt ver."
             )
+            
             if extra_context:
                 system_instruction += f"\n\nCANLI VERİ KAYNAĞI:\n{extra_context}\n\nBu veriyi kullanarak yanıt üret."
 
@@ -307,11 +306,9 @@ if prompt := st.chat_input("Sorgu, komut veya araştırma konusu girin..."):
                     stream=True
                 )
                 
-                # Canlı veri geldiyse neon rozet göster
                 if extra_context:
                     st.markdown("<span class=\"live-chip\">⚡ CANLI AĞ VERİSİ ENTEGRE EDİLDİ</span>", unsafe_allow_html=True)
                 
-                # Kelime kelime ekrana dök
                 response_placeholder = st.empty()
                 full_response = ""
                 for chunk in response_stream:
