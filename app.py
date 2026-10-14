@@ -23,7 +23,6 @@ st.markdown(
             font-family: 'JetBrains Mono', monospace;
         }
 
-        /* Kenar çubuğunu gizle */
         [data-testid="stSidebar"], [data-testid="stSidebarNav"], button[kind="header"] {
             display: none !important;
         }
@@ -132,28 +131,30 @@ st.markdown(
 API_KEY = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=API_KEY)
 
-# 1. Onay istemeyen, doğrudan çalışan ana modeller
-SAFE_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "llama3-70b-8192",
-    "llama3-8b-8192"
-]
-
-@st.cache_data(ttl=3600)
+# Hesabınızdaki çalışan modelleri filtreleyerek alan güvenli fonksiyon
+@st.cache_data(ttl=300)
 def get_verified_model():
     try:
-        available = [m.id for m in client.models.list().data]
-        for model in SAFE_MODELS:
-            if model in available:
-                return model
-        return "llama-3.3-70b-versatile"
+        remote_models = [m.id for m in client.models.list().data]
+        # Onay gerektiren, ses, embedding veya koruma modellerini ele
+        clean_models = [
+            m for m in remote_models 
+            if not any(x in m.lower() for x in ["whisper", "embed", "guard", "safetensors", "orpheus", "canopy", "allam"])
+        ]
+        
+        # Öncelikli modellerden hesapta mevcut olanı seç
+        preferred = ["llama3-8b-8192", "llama3-70b-8192", "gemma2-9b-it", "mixtral-8x7b-32768"]
+        for p in preferred:
+            if p in clean_models:
+                return p
+        
+        return clean_models[0] if clean_models else "llama3-8b-8192"
     except Exception:
-        return "llama-3.3-70b-versatile"
+        return "llama3-8b-8192"
 
 selected_model = get_verified_model()
 
-# 2. Küresel Canlı Hava Durumu (Open-Meteo)
+# Küresel Canlı Hava Durumu
 def get_live_weather(query_text):
     try:
         clean_name = re.sub(
@@ -191,11 +192,11 @@ def get_live_weather(query_text):
     except Exception:
         return None
 
-# 3. Genel İnternet Taraması (Wikipedia + DuckDuckGo Hibrit)
+# Genel İnternet Taraması
 def search_general_web(query):
     results = []
     
-    # Katman A: Wikipedia Türkçe Özeti
+    # 1. Wikipedia TR Özeti
     try:
         wiki_url = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(query)}"
         headers = {"User-Agent": "TegmenAI/1.0 (Educational Bot)"}
@@ -207,7 +208,7 @@ def search_general_web(query):
     except Exception:
         pass
 
-    # Katman B: DuckDuckGo JSON Endpoint
+    # 2. DuckDuckGo JSON Endpoint
     try:
         ddg_url = f"https://api.duckduckgo.com/?q={requests.utils.quote(query)}&format=json&no_html=1&skip_disambig=1"
         d_res = requests.get(ddg_url, timeout=4).json()
@@ -221,7 +222,7 @@ def search_general_web(query):
     except Exception:
         pass
 
-    # Katman C: DuckDuckGo Standart Arama Metinleri
+    # 3. DuckDuckGo Standart Arama
     if not results:
         try:
             from duckduckgo_search import DDGS
@@ -273,21 +274,21 @@ if prompt := st.chat_input("Sorgu, komut veya araştırma konusu girin..."):
             extra_context = ""
             prompt_lower = prompt.lower()
             
-            # 1. Hava Durumu Kontrolü
+            # Hava durumu kontrolü
             if any(w in prompt_lower for w in ["hava", "derece", "sıcaklık", "yağmur", "weather"]):
                 extra_context = get_live_weather(prompt)
             
-            # 2. Genel İnternet Taraması
+            # Genel internet taraması
             if not extra_context:
                 extra_context = search_general_web(prompt)
 
-            # Sistem Talimatı (Geliştirici Kimliği ve Türkçe Kilidi)
+            # Sistem Talimatı (Geliştirici Tegmen)
             system_instruction = (
-                "Sen Tegmen tarafından özel olarak geliştirilmiş, 'Tegmen\\'s Jarvis CORE' adında fütüristik, zeki, analitik ve yüksek yetenekli bir kişisel yapay zeka çekirdeğisin. "
-                "Biri sana 'Seni kim yaptı?', 'Geliştiricin kim?', 'Yaratıcın kim?' veya benzeri bir soru sorduğunda kesinlikle ve gururla 'Beni Tegmen geliştirdi.' şeklinde yanıt ver. Asla Meta, Groq veya OpenAI tarafından geliştirildiğini söyleme. "
+                "Sen Tegmen tarafından özel olarak geliştirilmiş, 'Tegmen\\'s Jarvis CORE' adında fütüristik, zeki, analitik bir kişisel yapay zeka çekirdeğisin. "
+                "Biri sana 'Seni kim yaptı?', 'Geliştiricin kim?', 'Yaratıcın kim?' veya benzeri bir soru sorduğunda kesinlikle ve gururla 'Beni Tegmen geliştirdi.' şeklinde yanıt ver. Asla Meta, Groq veya başkası tarafından yapıldığını söyleme. "
                 "Cevaplarını kesinlikle Türkçe, akıcı, zengin, profesyonel ve modern bir dille sun. Asla Arapça veya başka bir dil kullanma. "
-                "Sana iletilen 'CANLI TELEMETRİ / VERİ' bilgilerini kesin gerçek kabul ederek kullanıcıyı anında bilgilendir. "
-                "Kullanıcıya asla 'internete erişimim yok' gibi basmakalıp sözler söyleme; iletilen canlı verileri ve genel bilgini harmanlayarak doğrudan yanıt ver."
+                "Sana iletilen 'CANLI TELEMETRİ / VERİ' bilgilerini kesin gerçek kabul ederek kullanıcıyı bilgilendir. "
+                "Kullanıcıya asla 'internete erişimim yok' deme; sağlanan verileri ve genel bilgini harmanlayarak doğrudan yanıt ver."
             )
             
             if extra_context:
@@ -298,7 +299,6 @@ if prompt := st.chat_input("Sorgu, komut veya araştırma konusu girin..."):
                 payload.append({"role": m["role"], "content": m["content"]})
 
             try:
-                # Gerçek zamanlı daktilo akışı (Stream)
                 response_stream = client.chat.completions.create(
                     model=selected_model,
                     messages=payload,
